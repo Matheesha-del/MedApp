@@ -6,14 +6,14 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useState, useRef, useEffect} from 'react';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
-//import { Container } from '~/components/Container';
-//import { ScreenContent } from '~/components/ScreenContent';
+import { Container } from '~/components/Container';
+import { ScreenContent } from '~/components/ScreenContent';
 import * as Print from 'expo-print';
 import { shareAsync } from 'expo-sharing';
 
 
 let conversationArray: string[] = [];
-
+let detailsArray:string[] = [];
 
 export default function Details() {
   const [input, setInput] = useState('');
@@ -26,35 +26,71 @@ export default function Details() {
   const [permissionResponse, requestPermission] = Audio.usePermissions();
   const scrollViewRef = useRef(null);
   const [isPrinting, setIsPrinting] = useState(false);
-  const [currentSpeaker, setCurrentSpeaker] = useState('');
   const [selectedPrinter, setSelectedPrinter] = useState(null);
+  const [audioUri, setAudioUri] = useState<string | null>(null);
+  const [audioFiles, setAudioFiles] = useState<{ [key: string]: string }>({});
+  const [error, setError] = useState(null);
 
   
-  const textToSpeech = async (text: string) =>{
-    const { data,error } = await supabase.functions.invoke('text-to-speech',{
-      body: JSON.stringify({ input:text }),
+  const textToSpeechAndSave = async (text: string) => {
+    const { data, error } = await supabase.functions.invoke('text-to-speech', {
+      body: JSON.stringify({ input: text }),
     });
     console.log(error);
     console.log(data);
-    if (data)
-    {
-      const {sound} = await Audio.Sound.createAsync({
-        uri: `data:audio/mp3;base64,${data.mp3Base64}`,
-      });
-      sound.playAsync();
+    if (data && data.mp3Base64) {
+      const uri = `${FileSystem.cacheDirectory}${Date.now()}.mp3`;
+      await FileSystem.writeAsStringAsync(uri, data.mp3Base64, { encoding: FileSystem.EncodingType.Base64 });
+      return uri;  // Return the URI for later use
+    }
+    return null;
+  };
+  
+  
+  const playAudio = async (uri: string) => {
+    if (!uri) {
+      console.warn('No URI provided for audio.');
+      return;
+    }
+    try {
+      const { sound } = await Audio.Sound.createAsync({ uri });
+      await sound.playAsync();
+    } catch (err) {
+      console.error('Error playing audio:', err);
     }
   };
+  
+  
 
   // Append new messages to conversation and save to file
-  const addMessage = (speaker: 'Doctor' | 'Patient', text: string, audioUri?: string) => {
-    const newConversation = [...conversation, { speaker, text,audioUri }];
+  const addMessage = (speaker: string, text: string) => {
+    const newConversation = [...conversation, { speaker, text }];
     setConversation(newConversation);
-
-    // Auto-scroll to the bottom
+  
+    if (speaker === "Doctor") {
+      translateET(text).then((translatedText) => {
+        textToSpeechAndSave(translatedText)
+          .then((uri) => {
+            if (uri) {
+              setAudioFiles((prevFiles) => ({
+                ...prevFiles,
+                [translatedText]: uri, // Store audio URI with translated text as key
+              }));
+              // Play the Tamil translation immediately after saving
+              playAudio(uri);
+            } else {
+              console.error('Failed to save audio URI');
+            }
+          })
+          .catch((err) => console.error('Error generating audio:', err));
+      });
+    }
+  
     scrollViewRef.current?.scrollToEnd({ animated: true });
-
-   
   };
+  
+  
+
 
 
   const translateET = async (text :string) => {
@@ -66,6 +102,12 @@ export default function Details() {
   };
 
   const onTranslateET = async () => {
+    const translation = await translateTE(input);
+    setOutput(translation);
+  };
+
+
+  const onTranslateTE = async () => {
     const translation = await translateET(input);
     setOutput(translation);
   };
@@ -77,14 +119,6 @@ export default function Details() {
 
     return data?.content || 'Translation failed.';
   };
-
-
-  const onTranslateTE = async () => {
-    const translation = await translateTE(input);
-    setOutput(translation);
-  };
-
- 
   
   const summarize = async (conversation: string) => { 
     const { data,error } = await supabase.functions.invoke('summarize', {
@@ -102,11 +136,22 @@ export default function Details() {
     const summary = await summarize(singleConversation);
     console.log(summary);
     setSummaryText(summary);
-    setSummaryModalVisible(true);
+      setSummaryModalVisible(true);
     } catch (err) {
       console.error('Failed to fetch summary:', err);
     }
 
+  };
+
+
+  const clearConversation = async () => {
+    try {
+      const path = FileSystem.documentDirectory + 'conversation.txt';
+      await FileSystem.deleteAsync(path);
+      setConversation([]);
+    } catch (err) {
+      console.error('Failed to clear conversation:', err);
+    }
   };
 
   const html = `
@@ -119,7 +164,7 @@ export default function Details() {
           </style>
         </head>
         <body>
-          <h1>Summary of the Conversation</h1>
+          <h1>Report</h1>
           <p>${summaryText.replace(/\n/g, '<br>')}</p>
           <br><br>
           <p>Doctor's Signature: ______________</p>
@@ -208,53 +253,35 @@ const printToFile = async () => {
     }
   }
 
-  async function stopDoctorRecording() {
-    if (!doctorRecording){
-      return;
-    }
-    console.log('Stopping recording..');
+  const stopDoctorRecording = async () => {
+    if (!doctorRecording) return;
+  
     setDoctorRecording(undefined);
     await doctorRecording.stopAndUnloadAsync();
-    await Audio.setAudioModeAsync(
-      {
-        allowsRecordingIOS: false,
-      }
-    );
+    await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+  
     const uri = doctorRecording.getURI();
     console.log('Recording stopped and stored at', uri);
-
-    if(uri){
-      const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64'});
-      const { data, error } = await supabase.functions.invoke('speech-to-text',{
+  
+    if (uri) {
+      const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+      const { data, error } = await supabase.functions.invoke('speech-to-text', {
         body: JSON.stringify({ audioBase64 }),
       });
-      //setInput(data.text);
+  
       if (data?.text) {
+        addMessage('Doctor', data.text);
         const translation = await translateET(data.text);
-        const { sound } = await Audio.Sound.createAsync({
-          uri: `data:audio/mp3;base64,${data.mp3Base64}`,
-    });
-
-        const tamilVoiceUri = sound.getStatusAsync().then((status) => status.uri);
-        addMessage('Doctor', data.text, tamilVoiceUri);
-        sound.playAsync();
-        
+        const savedAudioUri = await textToSpeechAndSave(translation);
+  
+        if (savedAudioUri) {
+          setAudioUri(savedAudioUri);
+          playAudio(savedAudioUri);  // Play after saving
+        }
       }
-
-      
-
-
-      const translation = await translateET(data.text);
-      textToSpeech(translation);
-
-      console.log('Before:', conversationArray);
-      conversationArray.push(data.text);
-      console.log('After:', conversationArray);
-
-      console.log(data);
-      console.log(error);
-    }}
-
+    }
+  };
+  
     async function startPatientRecording() {
       try {
         if (permissionResponse?.status !== 'granted') {
@@ -302,130 +329,110 @@ const printToFile = async () => {
           
           const translation = await translateTE(data.text);
           addMessage('Patient', translation);
-          console.log('Before:', conversationArray);
+          //console.log('Before:', conversationArray);
           conversationArray.push(translation);
-          console.log('After:', conversationArray);
+          //console.log('After:', conversationArray);
         }
         console.log(data);
         console.log(error);
-      }}
+      }
+  }
 
-         
-  
-
-      return (
-        <View style={styles.container}>
-          <Text style={styles.header}>Tamil-English Translator</Text>
-      
-          <ScrollView style={styles.outputArea} ref={scrollViewRef}>
-            {conversation.map((line, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.messageContainer,
-                  line.speaker === 'Patient' && styles.patientMessage,
-                  line.speaker === 'Doctor' && styles.doctorMessage,
-                ]}
-              >
-                {line.speaker === 'Doctor' ? (
-                  <FontAwesome5 name="user-md" size={20} color="green" style={styles.icon} />
-                ) : (
-                  <FontAwesome5 name="user-alt" size={20} color="blue" style={styles.icon} />
-                )}
-      
-                <View style={styles.textContainer}>
-                  <Text style={styles.outputText}>{line.text}</Text>
-                  {line.audioUri && (
-                    <TouchableOpacity
-                      style={styles.replayButton}
-                      onPress={async () => {
-                        const { sound } = await Audio.Sound.createAsync({ uri: line.audioUri });
-                        sound.playAsync();
-                      }}
-                    >
-                      <FontAwesome5 name="play" size={20} color="blue" />
-                      <Text style={styles.replayText}>Replay</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-      
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={styles.button1}
-              onPress={() => {
-                setCurrentSpeaker('Doctor');
-                doctorRecording ? stopDoctorRecording() : startDoctorRecording();
-              }}
-            >
-              <FontAwesome5
-                name={doctorRecording ? 'stop' : 'microphone'}
-                size={24}
-                color={doctorRecording ? 'red' : 'green'}
-              />
-              <Text style={styles.buttonLabel1}>Doctor</Text>
-            </TouchableOpacity>
-      
-            <TouchableOpacity
-              style={styles.button2}
-              onPress={() => {
-                setCurrentSpeaker('Patient');
-                patientRecording ? stopPatientRecording() : startPatientRecording();
-              }}
-            >
-              <FontAwesome5
-                name={patientRecording ? 'stop' : 'microphone'}
-                size={24}
-                color={patientRecording ? 'red' : 'blue'}
-              />
-              <Text style={styles.buttonLabel2}>Patient</Text>
-            </TouchableOpacity>
-      
-            <TouchableOpacity style={styles.button2} onPress={onSummarize}>
-              <FontAwesome5 name="file-import" size={30} color="#FF9800" />
-              <Text style={styles.buttonLabel3}>Summarize</Text>
-            </TouchableOpacity>
-          </View>
-      
-          <Modal
-            animationType="slide"
-            transparent={true}
-            visible={summaryModalVisible}
-            onRequestClose={() => {}}
-          >
-            <View style={styles.modalContainer}>
-              <View style={styles.modalContent}>
-                <Text style={styles.summaryHeader}>Summary of the Conversation</Text>
-                <Text style={styles.summaryText}>{summaryText}</Text>
-      
-                <View style={styles.signatureContainer}>
-                  <Text>Doctor's Signature: ______________</Text>
-                  <Text>Patient's Signature: ______________</Text>
-                </View>
-      
-                <View style={styles.rowContainer}>
-                  <TouchableOpacity style={styles.button2} onPress={print}>
-                    <MaterialCommunityIcons name="printer" size={28} color="#6495ed" />
-                    <Text style={styles.buttonLabel4}>Print</Text>
-                  </TouchableOpacity>
-      
-                  <TouchableOpacity style={styles.spacer} onPress={printToFile}>
-                    <FontAwesome5 name="file-download" size={24} color="#6495ed" />
-                    <Text style={styles.buttonLabel4}>Print to PDF File</Text>
-                  </TouchableOpacity>
-                </View>
-      
-                <TouchableOpacity style={styles.closeButton} onPress={handlePrint}>
-                  <Text style={styles.closeButtonText}>Close</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Modal>
+  return (
+    <View style={styles.container}>
+      <Text style={styles.header}>Tamil-English Translator</Text>
+      <ScrollView style={styles.outputArea} ref={scrollViewRef}>
+  {conversation.map((line, index) => (
+    <View key={index} style={[styles.messageContainer, line.speaker === 'Patient' && styles.patientMessage]}>
+      {line.speaker === 'Doctor' ? (
+        <FontAwesome5 name="user-md" size={20} color="green" style={styles.icon} />
+      ) : (
+        <FontAwesome5 name="user-alt" size={20} color="blue" style={styles.icon} />
+      )}
+      <Text style={styles.outputText}>
+        <View style={styles.textContainer}>
+          <Text style={styles.outputText}>{line.text}</Text>
+          {/* Only show play button for doctor's messages */}
+          {line.speaker === 'Doctor' && (
+  <TouchableOpacity onPress={() => playAudio(audioFiles[line.text])}>
+    <FontAwesome5 name="play-circle" size={24} color="green" />
+  </TouchableOpacity>
+)}
         </View>
-      );
-    }      
+      </Text>
+    </View>
+  ))}
+</ScrollView>
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={styles.button2}
+          onPress={doctorRecording ? stopDoctorRecording : startDoctorRecording}
+        >
+          <FontAwesome5
+            name={doctorRecording ? 'stop' : 'microphone'}
+            size={24}
+            color={doctorRecording ? 'red' : 'green'}
+          />
+          <Text style={styles.buttonLabel1}>Doctor</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.button2}
+          onPress={patientRecording ? stopPatientRecording : startPatientRecording}
+        >
+          <FontAwesome5
+            name={patientRecording ? 'stop' : 'microphone'}
+            size={24}
+            color={patientRecording ? 'red' : 'blue'}
+          />
+          <Text style={styles.buttonLabel2}>Patient</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.button2} onPress={onSummarize}>
+          <FontAwesome5 name="file-import" size={30} color="#FF9800" />
+          <Text style={styles.buttonLabel3}>Summarize</Text>
+        </TouchableOpacity>
+      </View>
+       {/* Summary Modal */}
+       <Modal
+        animationType="slide"
+        transparent={true}
+        visible={summaryModalVisible}
+        onRequestClose={() => {}}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+          <ScrollView contentContainerStyle={styles.scrollContent}>
+            <Text style={styles.summaryHeader}>Summary of the Conversation</Text>
+            <Text style={styles.summaryText}>{summaryText}</Text>
+            <View style={styles.signatureContainer}>
+              <Text>Doctor's Signature: ______________</Text>
+              <Text></Text>
+              <Text>Patient's Signature: ______________</Text>
+            </View>
+            <View style={styles.rowContainer}>
+              <TouchableOpacity style={styles.button2} onPress={print}>
+              <MaterialCommunityIcons name="printer" size={28} color="#6495ed" />            
+              <Text style={styles.buttonLabel4}>Print</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.spacer} onPress={printToFile}>
+              <FontAwesome5 name="file-download" size={24} color="#6495ed" />
+              <Text style={styles.buttonLabel4}>Print to PDF File</Text>
+              </TouchableOpacity> 
+             
+            </View> 
+            <TouchableOpacity style={styles.closeButton} onPress={handlePrint}>
+              <Text style={styles.closeButtonText}>Close</Text>
+              </TouchableOpacity>
+
+        </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+    
+  );
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -440,45 +447,34 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     color: '#fff',
   },
-  
-  textContainer: {
-    backgroundColor: '#f1f1f1', // Light gray background for text
-    borderRadius: 8,  // Rounded corners for the background
-    paddingHorizontal: 10,  // Horizontal padding to create space around text
-    paddingVertical: 8,  // Vertical padding for better spacing
-    marginRight:4,
-    marginLeft:4,
-  },
-  patientMessage: {
-    flexDirection: 'row-reverse', // Align patient messages to the right
-    marginRight:2,
-    //justifyContent: 'flex-start',
-  },
-  doctorMessage: {
-    flexDirection: 'row', // Align patient messages to the right
-    marginLeft:2,
-    //justifyContent: 'flex-start',
-  },
-  icon: {
-    marginHorizontal:5,
-    
-  },
   messageContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
     marginLeft: 10, // Padding for doctor messages
-    marginRight: 10, 
-    paddingHorizontal: 10,// Padding for both messages
-        
+    marginRight: 10, // Padding for both messages
+  },
+  textContainer: {
+    backgroundColor: '#f1f1f1', // Light gray background for text
+    borderRadius: 8,  // Rounded corners for the background
+    paddingHorizontal: 8,  // Horizontal padding to create space around text
+    paddingVertical: 8,  // Vertical padding for better spacing
+    
+  },
+  patientMessage: {
+    flexDirection: 'row-reverse', // Align patient messages to the right
+    justifyContent: 'flex-start',
+  },
+  icon: {
+    marginRight: 10,
+    marginLeft: 5,
   },
   outputArea: {
-    
+    flex: 1,
     backgroundColor: '#fff',
     borderRadius: 10,
     padding: 20,
     marginBottom: 20,
-   
   },
   outputText: {
     fontSize: 16,
@@ -490,11 +486,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     backgroundColor: '#fff',
-    borderRadius: 8, 
-  },
-  button1:{
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   button2:{
     alignItems: 'center',
@@ -515,6 +506,35 @@ const styles = StyleSheet.create({
   buttonLabel4: {
     color: '#6495ed',
     fontSize: 16,
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    padding: 20,
+    borderRadius: 10,
+    width: '80%',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'space-between',
+  },
+  summaryHeader: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  summaryText: {
+    fontSize: 16,
+    marginBottom: 20,
+  },
+  signatureContainer: {
+    marginBottom: 20,
   },
   spacer: {
     alignItems: 'center',
@@ -543,41 +563,5 @@ const styles = StyleSheet.create({
   printer: {
     textAlign: 'center',
   },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 10,
-    width: '80%',
-  },
-  summaryHeader: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  summaryText: {
-    fontSize: 16,
-    marginBottom: 20,
-    textAlign: 'justify',
-  },
-  signatureContainer: {
-    marginBottom: 20,
-  },
-  replayButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 5,
-  },
-  replayText: {
-    marginLeft: 5,
-    color: 'blue',
-    fontSize: 14,
-  },
-  
+
 });
