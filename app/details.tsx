@@ -1,4 +1,3 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
 import { Platform, Text , View, TextInput, Button, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert}from 'react-native';
 import {supabase} from '~/utils/supabase';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
@@ -6,10 +5,9 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useState, useRef, useEffect} from 'react';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
-import { Container } from '~/components/Container';
-import { ScreenContent } from '~/components/ScreenContent';
 import * as Print from 'expo-print';
 import { shareAsync } from 'expo-sharing';
+import React from 'react';
 
 
 let conversationArray: string[] = [];
@@ -27,9 +25,10 @@ export default function Details() {
   const scrollViewRef = useRef(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [selectedPrinter, setSelectedPrinter] = useState(null);
-  const [audioUri, setAudioUri] = useState<string | null>(null);
   const [audioFiles, setAudioFiles] = useState<{ [key: string]: string }>({});
   const [error, setError] = useState(null);
+  const [recordings, setRecordings] = React.useState([]);
+  
 
   
   const textToSpeechAndSave = async (text: string) => {
@@ -54,43 +53,49 @@ export default function Details() {
     }
     try {
       const { sound } = await Audio.Sound.createAsync({ uri });
+      
+      sound.setOnPlaybackStatusUpdate(async (status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          await sound.unloadAsync();  // Unload after playback finishes
+        }
+      });
+  
       await sound.playAsync();
     } catch (err) {
       console.error('Error playing audio:', err);
     }
   };
-  
-  
 
+ 
   // Append new messages to conversation and save to file
   const addMessage = (speaker: string, text: string) => {
     const newConversation = [...conversation, { speaker, text }];
     setConversation(newConversation);
   
     if (speaker === "Doctor") {
-      translateET(text).then((translatedText) => {
-        textToSpeechAndSave(translatedText)
-          .then((uri) => {
-            if (uri) {
-              setAudioFiles((prevFiles) => ({
-                ...prevFiles,
-                [translatedText]: uri, // Store audio URI with translated text as key
-              }));
-              // Play the Tamil translation immediately after saving
-              playAudio(uri);
-            } else {
-              console.error('Failed to save audio URI');
-            }
-          })
-          .catch((err) => console.error('Error generating audio:', err));
-      });
+      translateET(text)
+        .then((translatedText) => {
+          return textToSpeechAndSave(translatedText)
+            .then((uri) => {
+              if (uri) {
+                setAudioFiles((prevFiles) => ({
+                  ...prevFiles,
+                  [translatedText]: uri, // Store audio URI with translated text as key
+                }));
+                // Play the Tamil translation immediately after saving
+                //playAudio(uri);
+              } else {
+                console.error('Failed to save audio URI');
+              }
+            })
+            .catch((err) => {
+              console.error('Error generating audio:', err);
+              throw err; // Re-throw the error to be caught by the outer catch
+            });
+        })
+        .catch((err) => console.error('Error translating text:', err));
     }
-  
-    scrollViewRef.current?.scrollToEnd({ animated: true });
-  };
-  
-  
-
+};
 
 
   const translateET = async (text :string) => {
@@ -259,9 +264,15 @@ const printToFile = async () => {
     setDoctorRecording(undefined);
     await doctorRecording.stopAndUnloadAsync();
     await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-  
+
+    let allRecordings = [...recordings];
+    const { sound, status } = await doctorRecording.createNewLoadedSoundAsync();
     const uri = doctorRecording.getURI();
     console.log('Recording stopped and stored at', uri);
+    
+
+    setRecordings(allRecordings); 
+    
   
     if (uri) {
       const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
@@ -276,10 +287,21 @@ const printToFile = async () => {
   
         if (savedAudioUri) {
           setAudioUri(savedAudioUri);
-          playAudio(savedAudioUri);  // Play after saving
         }
       }
     }
+  };
+
+
+  const getRecordingLines = (translatedText: string) => {
+    const uri = audioFiles[translatedText];
+    return (
+      <View style={styles.row}>
+        <TouchableOpacity onPress={() => playAudio(uri)}>
+          <FontAwesome5 name="play-circle" size={24} color="green" />
+        </TouchableOpacity>
+      </View>
+    );
   };
   
     async function startPatientRecording() {
@@ -353,11 +375,9 @@ const printToFile = async () => {
         <View style={styles.textContainer}>
           <Text style={styles.outputText}>{line.text}</Text>
           {/* Only show play button for doctor's messages */}
-          {line.speaker === 'Doctor' && (
-  <TouchableOpacity onPress={() => playAudio(audioFiles[line.text])}>
-    <FontAwesome5 name="play-circle" size={24} color="green" />
-  </TouchableOpacity>
-)}
+          {line.speaker === 'Doctor' && 
+          getRecordingLines(line.text)
+}
         </View>
       </Text>
     </View>
@@ -367,7 +387,9 @@ const printToFile = async () => {
         <TouchableOpacity
           style={styles.button2}
           onPress={doctorRecording ? stopDoctorRecording : startDoctorRecording}
-        >
+          >
+          
+        
           <FontAwesome5
             name={doctorRecording ? 'stop' : 'microphone'}
             size={24}
