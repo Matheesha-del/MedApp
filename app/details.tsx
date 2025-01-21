@@ -13,8 +13,8 @@ import * as Print from 'expo-print';
 import { shareAsync } from 'expo-sharing';
 
 
-let conversationArray: string[] = [];
-let detailsArray:string[] = [];
+
+
 
 
 
@@ -30,6 +30,11 @@ export default function Details() {
   const scrollViewRef = useRef(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [selectedPrinter, setSelectedPrinter] = useState(null);
+  const [uriArray, setUriArray] = useState<(string | null)[]>([]);
+  const searchParams = useLocalSearchParams();
+  const [name, setName] = useState(searchParams.name || null);
+  const [age, setAge] = useState(searchParams.age || null);
+  const [patientVoiceType, setPatientVoiceType] = useState(searchParams.patientVoiceType || null);
 
   
   const textToSpeech = async (text: string) =>{
@@ -40,16 +45,20 @@ export default function Details() {
     console.log(data);
     if (data)
     {
-      const {sound} = await Audio.Sound.createAsync({
-        uri: `data:audio/mp3;base64,${data.mp3Base64}`,
-      });
-      sound.playAsync();
+      const uri = `data:audio/mp3;base64,${data.mp3Base64}`;
+
+      // Add the URI to the array
+      setUriArray((prevArray) => [...prevArray, uri]);
+
+      // Play the audio
+      const { sound } = await Audio.Sound.createAsync({ uri });
+      await sound.playAsync();
     }
   };
 
   // Append new messages to conversation and save to file
   const addMessage = (speaker:string, text :string) => {
-    const newConversation = [...conversation, { speaker, text }];
+    const newConversation = [...conversation, { speaker, text}];
     setConversation(newConversation);
 
 
@@ -57,7 +66,7 @@ export default function Details() {
     scrollViewRef.current?.scrollToEnd({ animated: true });
 
    
-  };
+  }; 
 
 
   const translateET = async (text :string) => {
@@ -94,7 +103,7 @@ export default function Details() {
     console.log(error);
     console.log(data);
     return data?.summary || 'Something went wrong!';
-  }*/
+  }
 
   const onSummarize = async () => {
     const singleConversation = conversationArray.join('<***>');
@@ -108,7 +117,40 @@ export default function Details() {
       console.error('Failed to fetch summary:', err);
     }
 
+  };*/
+  const generateReport = (conversation) => {
+    if (!conversation || conversation.length === 0) {
+      return 'No conversation data available.';
+    }
+  
+    let report = 'Conversation Report\n';
+    report += '=====================\n\n';
+  
+    conversation.forEach((line, index) => {
+      //report += `Message ${index + 1}:\n`;
+      report += `${line.speaker} : ${line.text}\n`;
+    });
+  
+    report += '=====================\n';
+    report += 'End of Report';
+    
+    return report;
   };
+
+
+  const onSummarize = async () => {
+    try {
+      const report = generateReport(conversation);
+      console.log(report);
+      setSummaryText(report);
+      setSummaryModalVisible(true);
+    } catch (err) {
+      console.error('Failed to generate report:', err);
+    }
+  };
+  
+  
+
 
 
   const clearConversation = async () => {
@@ -162,6 +204,40 @@ const printToFile = async () => {
     console.error('Error during print to file:', error);
   }
 };
+
+const playAudio = async (uri: string) => {
+  if (!uri) {
+    console.warn('No URI provided for audio.');
+    return;
+  }
+  try {
+    const { sound } = await Audio.Sound.createAsync({ uri });
+    
+    sound.setOnPlaybackStatusUpdate(async (status) => {
+      if (status.isLoaded && status.didJustFinish) {
+        await sound.unloadAsync();  // Unload after playback finishes
+      }
+    });
+
+    await sound.playAsync();
+  } catch (err) {
+    console.error('Error playing audio:', err);
+  }
+};
+
+
+const handleReplay = (index) => {
+  const uri = uriArray[index];
+  return (
+    <View style={styles.row}>
+      <TouchableOpacity onPress={() => playAudio(uri)}>
+        <FontAwesome5 name="play-circle" size={24} color="green" />
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+
 
 {/*const selectPrinter = async () => {
   if (Platform.OS === 'ios') {
@@ -252,10 +328,6 @@ const printToFile = async () => {
       const translation = await translateET(data.text);
       textToSpeech(translation);
 
-      //console.log('Before:', conversationArray);
-      conversationArray.push(data.text);
-      //console.log('After:', conversationArray);
-
       console.log(data);
       console.log(error);
     }
@@ -307,9 +379,7 @@ const printToFile = async () => {
           
           const translation = await translateTE(data.text);
           addMessage('Patient', translation);
-          //console.log('Before:', conversationArray);
-          conversationArray.push(translation);
-          //console.log('After:', conversationArray);
+          
         }
         console.log(data);
         console.log(error);
@@ -320,6 +390,8 @@ const printToFile = async () => {
     <View style={styles.container}>
       <Text style={styles.header}>Tamil-English Translator</Text>
       <ScrollView style={styles.outputArea} ref={scrollViewRef}>
+      <Text style={styles.outputText}>Name - {name}</Text>
+      <Text style={styles.outputText}>Age - {age}</Text>
         {conversation.map((line, index) => (
           <View key={index} 
           style={[styles.messageContainer,
@@ -333,6 +405,7 @@ const printToFile = async () => {
           <Text style={styles.outputText}>
           <View style={styles.textContainer}>
             <Text style={styles.outputText}>{line.text}</Text>
+            {line.speaker === 'Doctor' && handleReplay(index)}
             </View>
            
           </Text>
