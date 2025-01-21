@@ -8,6 +8,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Print from 'expo-print';
 import { shareAsync } from 'expo-sharing';
 import React from 'react';
+import { useLocalSearchParams } from 'expo-router';
 
 
 let conversationArray: string[] = [];
@@ -28,9 +29,11 @@ export default function Details() {
   const [audioFiles, setAudioFiles] = useState<{ [key: string]: string }>({});
   const [error, setError] = useState(null);
   const [recordings, setRecordings] = React.useState([]);
+  const searchParams = useLocalSearchParams();
+  const [name, setName] = useState(searchParams.name || null);
+  const [age, setAge] = useState(searchParams.age || null);
   
-
-  
+      
   const textToSpeechAndSave = async (text: string) => {
     const { data, error } = await supabase.functions.invoke('text-to-speech', {
       body: JSON.stringify({ input: text }),
@@ -230,6 +233,8 @@ const printToFile = async () => {
             setSummaryModalVisible(false);
             setIsPrinting(false);
             setConversation([]);
+            setName(null); // Reset name
+            setAge(null);  // Reset age
           },
         }, 
       ]
@@ -286,7 +291,7 @@ const printToFile = async () => {
         const savedAudioUri = await textToSpeechAndSave(translation);
   
         if (savedAudioUri) {
-          setAudioUri(savedAudioUri);
+          // This line is incorrect and has been removed
         }
       }
     }
@@ -363,7 +368,10 @@ const printToFile = async () => {
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Tamil-English Translator</Text>
+      
       <ScrollView style={styles.outputArea} ref={scrollViewRef}>
+      <Text style={styles.outputText}>Name - {name}</Text>
+      <Text style={styles.outputText}>Age - {age}</Text>
   {conversation.map((line, index) => (
     <View key={index} style={[styles.messageContainer, line.speaker === 'Patient' && styles.patientMessage]}>
       {line.speaker === 'Doctor' ? (
@@ -387,8 +395,7 @@ const printToFile = async () => {
         <TouchableOpacity
           style={styles.button2}
           onPress={doctorRecording ? stopDoctorRecording : startDoctorRecording}
-          >
-          
+          >         
         
           <FontAwesome5
             name={doctorRecording ? 'stop' : 'microphone'}
@@ -468,6 +475,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
     color: '#fff',
+  },
+  headerText: {
+    fontSize: 18,
+    color: '#fff',
+    fontWeight: 'bold',
+    marginBottom: 5,
   },
   messageContainer: {
     flexDirection: 'row',
