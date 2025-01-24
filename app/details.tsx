@@ -1,3 +1,4 @@
+import { useLocalSearchParams } from 'expo-router';
 import { Platform, Text , View, TextInput, Button, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert}from 'react-native';
 import {supabase} from '~/utils/supabase';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
@@ -7,12 +8,7 @@ import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import * as Print from 'expo-print';
 import { shareAsync } from 'expo-sharing';
-import React from 'react';
-import { useLocalSearchParams } from 'expo-router';
 
-
-let conversationArray: string[] = [];
-let detailsArray:string[] = [];
 
 export default function Details() {
   const [input, setInput] = useState('');
@@ -26,79 +22,42 @@ export default function Details() {
   const scrollViewRef = useRef(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [selectedPrinter, setSelectedPrinter] = useState(null);
-  const [audioFiles, setAudioFiles] = useState<{ [key: string]: string }>({});
-  const [error, setError] = useState(null);
-  const [recordings, setRecordings] = React.useState([]);
+  const [uriArray, setUriArray] = useState<(string | null)[]>([]);
   const searchParams = useLocalSearchParams();
   const [name, setName] = useState(searchParams.name || null);
   const [age, setAge] = useState(searchParams.age || null);
+
   
-      
-  const textToSpeechAndSave = async (text: string) => {
-    const { data, error } = await supabase.functions.invoke('text-to-speech', {
-      body: JSON.stringify({ input: text }),
+  const textToSpeech = async (text: string) =>{
+    const { data,error } = await supabase.functions.invoke('text-to-speech',{
+      body: JSON.stringify({ input:text }),
     });
     console.log(error);
     console.log(data);
-    if (data && data.mp3Base64) {
-      const uri = `${FileSystem.cacheDirectory}${Date.now()}.mp3`;
-      await FileSystem.writeAsStringAsync(uri, data.mp3Base64, { encoding: FileSystem.EncodingType.Base64 });
-      return uri;  // Return the URI for later use
-    }
-    return null;
-  };
-  
-  
-  const playAudio = async (uri: string) => {
-    if (!uri) {
-      console.warn('No URI provided for audio.');
-      return;
-    }
-    try {
+    if (data)
+    {
+      const uri = `data:audio/mp3;base64,${data.mp3Base64}`;
+
+      // Add the URI to the array
+      setUriArray((prevArray) => [...prevArray, uri]);
+
+      // Play the audio
       const { sound } = await Audio.Sound.createAsync({ uri });
-      
-      sound.setOnPlaybackStatusUpdate(async (status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          await sound.unloadAsync();  // Unload after playback finishes
-        }
-      });
-  
       await sound.playAsync();
-    } catch (err) {
-      console.error('Error playing audio:', err);
     }
   };
 
- 
   // Append new messages to conversation and save to file
-  const addMessage = (speaker: string, text: string) => {
-    const newConversation = [...conversation, { speaker, text }];
+  const addMessage = (speaker:string, text :string) => {
+    const newConversation = [...conversation, { speaker, text}];
     setConversation(newConversation);
-  
-    if (speaker === "Doctor") {
-      translateET(text)
-        .then((translatedText) => {
-          return textToSpeechAndSave(translatedText)
-            .then((uri) => {
-              if (uri) {
-                setAudioFiles((prevFiles) => ({
-                  ...prevFiles,
-                  [translatedText]: uri, // Store audio URI with translated text as key
-                }));
-                // Play the Tamil translation immediately after saving
-                //playAudio(uri);
-              } else {
-                console.error('Failed to save audio URI');
-              }
-            })
-            .catch((err) => {
-              console.error('Error generating audio:', err);
-              throw err; // Re-throw the error to be caught by the outer catch
-            });
-        })
-        .catch((err) => console.error('Error translating text:', err));
-    }
-};
+
+
+    // Auto-scroll to the bottom
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+
+   
+  }; 
 
 
   const translateET = async (text :string) => {
@@ -127,7 +86,7 @@ export default function Details() {
 
     return data?.content || 'Translation failed.';
   };
-  
+  /*
   const summarize = async (conversation: string) => { 
     const { data,error } = await supabase.functions.invoke('summarize', {
       body: JSON.stringify({conversation}),
@@ -149,9 +108,38 @@ export default function Details() {
       console.error('Failed to fetch summary:', err);
     }
 
+  };*/
+  const generateReport = (conversation) => {
+    if (!conversation || conversation.length === 0) {
+      return 'No conversation data available.';
+    }
+  
+    let report = 'Conversation Report\n';
+    report += '=====================\n\n';
+  
+    conversation.forEach((line, index) => {
+      //report += `Message ${index + 1}:\n`;
+      report += `${line.speaker} : ${line.text}\n`;
+    });
+  
+    report += '=====================\n';
+    report += 'End of Report';
+    
+    return report;
   };
 
 
+  const onSummarize = async () => {
+    try {
+      const report = generateReport(conversation);
+      console.log(report);
+      setSummaryText(report);
+      setSummaryModalVisible(true);
+    } catch (err) {
+      console.error('Failed to generate report:', err);
+    }
+  };
+ 
   const clearConversation = async () => {
     try {
       const path = FileSystem.documentDirectory + 'conversation.txt';
@@ -204,6 +192,40 @@ const printToFile = async () => {
   }
 };
 
+const playAudio = async (uri: string) => {
+  if (!uri) {
+    console.warn('No URI provided for audio.');
+    return;
+  }
+  try {
+    const { sound } = await Audio.Sound.createAsync({ uri });
+    
+    sound.setOnPlaybackStatusUpdate(async (status) => {
+      if (status.isLoaded && status.didJustFinish) {
+        await sound.unloadAsync();  // Unload after playback finishes
+      }
+    });
+
+    await sound.playAsync();
+  } catch (err) {
+    console.error('Error playing audio:', err);
+  }
+};
+
+
+const handleReplay = (index) => {
+  const uri = uriArray[index];
+  return (
+    <View style={styles.row}>
+      <TouchableOpacity onPress={() => playAudio(uri)}>
+        <FontAwesome5 name="play-circle" size={24} color="green" />
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+
+
 {/*const selectPrinter = async () => {
   if (Platform.OS === 'ios') {
     try {
@@ -233,14 +255,16 @@ const printToFile = async () => {
             setSummaryModalVisible(false);
             setIsPrinting(false);
             setConversation([]);
-            setName(null); // Reset name
-            setAge(null);  // Reset age
           },
         }, 
       ]
       );
       
     };
+
+
+
+
 
   async function startDoctorRecording() {
     try {
@@ -263,52 +287,38 @@ const printToFile = async () => {
     }
   }
 
-  const stopDoctorRecording = async () => {
-    if (!doctorRecording) return;
-  
+  async function stopDoctorRecording() {
+    if (!doctorRecording){
+      return;
+    }
+    console.log('Stopping recording..');
     setDoctorRecording(undefined);
     await doctorRecording.stopAndUnloadAsync();
-    await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-
-    let allRecordings = [...recordings];
-    const { sound, status } = await doctorRecording.createNewLoadedSoundAsync();
+    await Audio.setAudioModeAsync(
+      {
+        allowsRecordingIOS: false,
+      }
+    );
     const uri = doctorRecording.getURI();
     console.log('Recording stopped and stored at', uri);
-    
 
-    setRecordings(allRecordings); 
-    
-  
-    if (uri) {
-      const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-      const { data, error } = await supabase.functions.invoke('speech-to-text', {
+    if(uri){
+      const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64'});
+      const { data, error } = await supabase.functions.invoke('speech-to-text',{
         body: JSON.stringify({ audioBase64 }),
       });
-  
+      //setInput(data.text);
       if (data?.text) {
         addMessage('Doctor', data.text);
-        const translation = await translateET(data.text);
-        const savedAudioUri = await textToSpeechAndSave(translation);
-  
-        if (savedAudioUri) {
-          // This line is incorrect and has been removed
-        }
       }
+
+      const translation = await translateET(data.text);
+      textToSpeech(translation);
+
+      console.log(data);
+      console.log(error);
     }
-  };
-
-
-  const getRecordingLines = (translatedText: string) => {
-    const uri = audioFiles[translatedText];
-    return (
-      <View style={styles.row}>
-        <TouchableOpacity onPress={() => playAudio(uri)}>
-          <FontAwesome5 name="play-circle" size={24} color="green" />
-        </TouchableOpacity>
-      </View>
-    );
-  };
-  
+  }
     async function startPatientRecording() {
       try {
         if (permissionResponse?.status !== 'granted') {
@@ -356,9 +366,7 @@ const printToFile = async () => {
           
           const translation = await translateTE(data.text);
           addMessage('Patient', translation);
-          //console.log('Before:', conversationArray);
-          conversationArray.push(translation);
-          //console.log('After:', conversationArray);
+          
         }
         console.log(data);
         console.log(error);
@@ -368,35 +376,37 @@ const printToFile = async () => {
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Tamil-English Translator</Text>
-      
       <ScrollView style={styles.outputArea} ref={scrollViewRef}>
-      <Text style={styles.outputText}>Name - {name}</Text>
-      <Text style={styles.outputText}>Age - {age}</Text>
-  {conversation.map((line, index) => (
-    <View key={index} style={[styles.messageContainer, line.speaker === 'Patient' && styles.patientMessage]}>
-      {line.speaker === 'Doctor' ? (
-        <FontAwesome5 name="user-md" size={20} color="green" style={styles.icon} />
-      ) : (
-        <FontAwesome5 name="user-alt" size={20} color="blue" style={styles.icon} />
-      )}
-      <Text style={styles.outputText}>
-        <View style={styles.textContainer}>
-          <Text style={styles.outputText}>{line.text}</Text>
-          {/* Only show play button for doctor's messages */}
-          {line.speaker === 'Doctor' && 
-          getRecordingLines(line.text)
-}
+      <View style={styles.detailsBox}>
+      <Text style={styles.details}>Name - {name}</Text>
+      <Text style={styles.details}>Age - {age}</Text>
+      </View>
+      
+        {conversation.map((line, index) => (
+          <View key={index} 
+          style={[styles.messageContainer,
+          line.speaker === 'Patient' && styles.patientMessage,]}>
+            
+          {line.speaker === 'Doctor' ? (
+            <FontAwesome5 name="user-md" size={20} color="green" style={styles.icon} />
+          ) : (
+            <FontAwesome5 name="user-alt" size={20} color="blue" style={styles.icon} />
+          )}
+          <Text style={styles.outputText}>
+          <View style={styles.textContainer}>
+            <Text style={styles.outputText}>{line.text}</Text>
+            {line.speaker === 'Doctor' && handleReplay(index)}
+            </View>
+           
+          </Text>
         </View>
-      </Text>
-    </View>
-  ))}
-</ScrollView>
+        ))}
+      </ScrollView>
       <View style={styles.footer}>
         <TouchableOpacity
           style={styles.button2}
           onPress={doctorRecording ? stopDoctorRecording : startDoctorRecording}
-          >         
-        
+        >
           <FontAwesome5
             name={doctorRecording ? 'stop' : 'microphone'}
             size={24}
@@ -476,12 +486,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     color: '#fff',
   },
-  headerText: {
-    fontSize: 18,
-    color: '#fff',
-    fontWeight: 'bold',
-    marginBottom: 5,
-  },
   messageContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -515,6 +519,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
+  detailsBox: {
+    backgroundColor: '#f1f1f1',
+    borderRadius: 10,
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  details: {
+    fontSize: 18,
+    color: '#333',
+    textAlign: 'center',
+},
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
