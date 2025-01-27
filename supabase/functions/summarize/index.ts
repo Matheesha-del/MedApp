@@ -29,10 +29,7 @@ Deno.serve(async (req) => {
       messages: [
         { 
           role: "system", 
-          content: `You are an assistant. I have passed you a string of a conversation between a doctor and a patient. Each dialogue is separated by '<***>'.
-           Usually, the dialogue is initiating by the doctor and flowing onwards. Please mention the private details such as name, age, residence, contact details, etc in the top of the message in the point form.
-            Then mention the symptoms having to the patient in the next point. Afterwards mention the other things as a summary in a single passage and no need to mention the symptoms and private details in that passage.. 
-           Also, give me the convertion of the report you made in tamil also.` 
+          content: `You are an assistant. I have passe you a conversation between a doctor and a patient. Please give me a summary of that. ` 
         },
         { role: "user", content: conversation },
       ],

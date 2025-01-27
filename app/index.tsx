@@ -4,6 +4,8 @@ import { Button } from 'react-native-paper';
 import LottieView from 'lottie-react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
+import 'setimmediate';
+
 
 
 export default function Home() {
@@ -31,7 +33,7 @@ export default function Home() {
     // Navigate to the details page with patient details
     router.push({
       pathname: '/details',
-      params: { name: patientName, age: patientAge },
+      params: { name: patientName, age: patientAge, voiceType:patientVoiceType },
     });
 
     // Clear the input fields for the next use
@@ -41,7 +43,7 @@ export default function Home() {
 
   return (
     <>
-      <ImageBackground source={require('../assets/background.jpg')} style={styles.container}>
+      <ImageBackground source={require('../assets/background1.jpg')} style={styles.container}>
         {/* Lottie Animation */}
         <LottieView
           source={require('../assets/Main Scene.json')}

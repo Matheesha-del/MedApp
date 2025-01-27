@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Platform, Text , View, TextInput, Button, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert}from 'react-native';
+import { Platform, Text , View, TextInput, Button, ScrollView, ImageBackground, StyleSheet, TouchableOpacity, Modal, Alert}from 'react-native';
 import {supabase} from '~/utils/supabase';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -11,11 +11,7 @@ import { Container } from '~/components/Container';
 import { ScreenContent } from '~/components/ScreenContent';
 import * as Print from 'expo-print';
 import { shareAsync } from 'expo-sharing';
-
-
-
-
-
+import { format } from 'date-fns';
 
 
 export default function Details() {
@@ -34,18 +30,26 @@ export default function Details() {
   const searchParams = useLocalSearchParams();
   const [name, setName] = useState(searchParams.name || null);
   const [age, setAge] = useState(searchParams.age || null);
-  const [patientVoiceType, setPatientVoiceType] = useState(searchParams.patientVoiceType || null);
+  const [voiceType, setVoiceType] = useState(searchParams.age || null);
+  const [patientVoiceType, setPatientVoiceType] = useState(searchParams.VoiceType || null);
+  const currentDate = new Date();
+  const formattedDate = format(currentDate, 'yyyy-MM-dd');
 
   
   const textToSpeech = async (text: string) =>{
-    const { data,error } = await supabase.functions.invoke('text-to-speech',{
-      body: JSON.stringify({ input:text }),
+    const { data,error } = await supabase.functions.invoke('tts',{
+      body: JSON.stringify({
+        "text": text,
+        "languageCode": "தமிழ் (இந்தியா)",
+        "voiceName": "ta-IN-Wavenet-B"
+      }),
     });
     console.log(error);
     console.log(data);
     if (data)
     {
-      const uri = `data:audio/mp3;base64,${data.mp3Base64}`;
+      const uri = `data:audio/mp3;base64,${data.audioContent}`;
+      console.log(uri);
 
       // Add the URI to the array
       setUriArray((prevArray) => [...prevArray, uri]);
@@ -57,8 +61,8 @@ export default function Details() {
   };
 
   // Append new messages to conversation and save to file
-  const addMessage = (speaker:string, text :string) => {
-    const newConversation = [...conversation, { speaker, text}];
+  const addMessage = (speaker:string, text :string, text2:string) => {
+    const newConversation = [...conversation, { speaker, text, text2}];
     setConversation(newConversation);
 
 
@@ -125,10 +129,14 @@ export default function Details() {
   
     let report = 'Conversation Report\n';
     report += '=====================\n\n';
+    report += `Date : ${formattedDate} \n`;
+    report += `Name : ${name} \n`;
+    report += `Age : ${age} \n\n`;
   
     conversation.forEach((line, index) => {
       //report += `Message ${index + 1}:\n`;
       report += `${line.speaker} : ${line.text}\n`;
+      report += `                 ${line.text2}\n`;
     });
   
     report += '=====================\n';
@@ -290,11 +298,11 @@ const handleReplay = (index) => {
         playsInSilentModeIOS: true,
       });
 
-      console.log('Starting recording..');
+      //console.log('Starting recording..');
       const { recording } = await Audio.Recording.createAsync( Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
       setDoctorRecording(recording);
-      console.log('Recording started');
+      //console.log('Recording started');
     } catch (err) {
       console.error('Failed to start recording', err);
     }
@@ -304,7 +312,7 @@ const handleReplay = (index) => {
     if (!doctorRecording){
       return;
     }
-    console.log('Stopping recording..');
+    //console.log('Stopping recording..');
     setDoctorRecording(undefined);
     await doctorRecording.stopAndUnloadAsync();
     await Audio.setAudioModeAsync(
@@ -313,7 +321,7 @@ const handleReplay = (index) => {
       }
     );
     const uri = doctorRecording.getURI();
-    console.log('Recording stopped and stored at', uri);
+    //console.log('Recording stopped and stored at', uri);
 
     if(uri){
       const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64'});
@@ -321,12 +329,14 @@ const handleReplay = (index) => {
         body: JSON.stringify({ audioBase64 }),
       });
       //setInput(data.text);
-      if (data?.text) {
-        addMessage('Doctor', data.text);
-      }
+      
 
       const translation = await translateET(data.text);
       textToSpeech(translation);
+
+      if (data?.text) {
+        addMessage('Doctor', data.text ,translation);
+      }
 
       console.log(data);
       console.log(error);
@@ -378,7 +388,8 @@ const handleReplay = (index) => {
         if (data?.text) {
           
           const translation = await translateTE(data.text);
-          addMessage('Patient', translation);
+          addMessage('Patient', translation, data.text);
+          setUriArray((prevArray) => [...prevArray, uri]);
           
         }
         console.log(data);
@@ -387,7 +398,7 @@ const handleReplay = (index) => {
   }
 
   return (
-    <View style={styles.container}>
+    <ImageBackground source={require('../assets/background.png')} style={styles.container}>
       <Text style={styles.header}>Tamil-English Translator</Text>
       <ScrollView style={styles.outputArea} ref={scrollViewRef}>
       <Text style={styles.outputText}>Name - {name}</Text>
@@ -405,6 +416,7 @@ const handleReplay = (index) => {
           <Text style={styles.outputText}>
           <View style={styles.textContainer}>
             <Text style={styles.outputText}>{line.text}</Text>
+            <Text style={styles.outputText}>{line.text2}</Text>
             {line.speaker === 'Doctor' && handleReplay(index)}
             </View>
            
@@ -452,7 +464,7 @@ const handleReplay = (index) => {
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
           <ScrollView contentContainerStyle={styles.scrollContent}>
-            <Text style={styles.summaryHeader}>Summary of the Conversation</Text>
+            <Text style={styles.summaryHeader}>Report</Text>
             <Text style={styles.summaryText}>{summaryText}</Text>
             <View style={styles.signatureContainer}>
               <Text>Doctor's Signature: ______________</Text>
@@ -478,7 +490,7 @@ const handleReplay = (index) => {
           </View>
         </View>
       </Modal>
-    </View>
+    </ImageBackground>
     
   );
 }
