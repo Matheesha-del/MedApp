@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
     messages: [
         { role: "system", 
           content: `You are a translator. You translate from ${from} to ${to}. Also, keep mind that these phrases are from a conversation between a doctor who is fluent in English and a tamil patient. 
-          You output only the translated text.` },
+          You output only the translated text. Also the phrases are either in from English or Tamil` },
         {role: "user", content: input},
     ],
 });

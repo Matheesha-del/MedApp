@@ -17,10 +17,10 @@
       "tsconfigPaths": true
     },
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/Micon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/ss.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -36,6 +36,14 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.anonymous.MedTranslator"
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "3756ae89-1296-4c47-bb73-ba6e9ea48bf8"
+      }
     }
   }
 }

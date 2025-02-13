@@ -5,6 +5,7 @@ import LottieView from 'lottie-react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import 'setimmediate';
+import { registerRootComponent } from "expo";
 
 
 
@@ -13,6 +14,15 @@ export default function Home() {
   const [patientName, setPatientName] = useState('');
   const [patientAge, setPatientAge] = useState('');
   const [patientVoiceType, setPatientVoiceType] = useState('');
+
+  const App = () => {
+    return (
+      <View>
+        <Text>Hello, this is my app!</Text>
+      </View>
+    );
+  };
+  registerRootComponent(App);
 
   const router = useRouter(); // Use router for navigation
 
@@ -43,7 +53,7 @@ export default function Home() {
 
   return (
     <>
-      <ImageBackground source={require('../assets/background1.jpg')} style={styles.container}>
+      <ImageBackground source={require('../assets/background.jpg')} style={styles.container}>
         {/* Lottie Animation */}
         <LottieView
           source={require('../assets/Main Scene.json')}
@@ -95,35 +105,40 @@ export default function Home() {
         onChangeText={setPatientAge}
         keyboardType="numeric"
       />
+      <Text style={styles.pickerTitle}>Select the Voice Type</Text>
       {/* Voice Type Dropdown */}
       <Picker
-        selectedValue={patientVoiceType}
-        onValueChange={(itemValue) => setPatientVoiceType(itemValue)}
-        style={styles.dropdown}
-      >
-        <Picker.Item label="Select Voice Type" value="" />
-        <Picker.Item label="Normal" value="normal" />
-        <Picker.Item label="Hoarse" value="hoarse" />
-        <Picker.Item label="Breathy" value="breathy" />
-        <Picker.Item label="Harsh" value="harsh" />
-      </Picker>
-      {/* Modal Buttons */}
-      <View style={styles.modalButtons}>
-        <Button
-          mode="contained"
-          style={[styles.modalButton, { backgroundColor: '#f44336' }]}
-          onPress={() => setModalVisible(false)}
-        >
-          Cancel
-        </Button>
-        <Button
-          mode="contained"
-          style={[styles.modalButton, { backgroundColor: '#4caf50' }]}
-          onPress={handleConfirm}
-        >
-          Confirm
-        </Button>
-      </View>
+  selectedValue={patientVoiceType}
+  onValueChange={(itemValue) => setPatientVoiceType(itemValue)}
+  style={styles.dropdown}
+>
+  <Picker.Item label="Voice Type" value="" enabled={false} />
+  <Picker.Item label="Voice-1 (Female)" value="ta-IN-Standard-A" />
+  <Picker.Item label="Voice-2 (Male)" value="ta-IN-Standard-B" />
+</Picker>
+
+<View style={styles.modalButtons}>
+  <Button
+    mode="contained"
+    style={[styles.modalButton, { backgroundColor: '#f44336' }]}
+    onPress={() => setModalVisible(false)}
+  >
+    Cancel
+  </Button>
+  {/*Ok Button*/}
+  <Button
+    mode="contained"
+    style={[
+      styles.modalButton,
+      { backgroundColor: patientVoiceType ? '#4caf50' : '#9e9e9e' }, // Grey out if disabled
+    ]}
+    onPress={handleConfirm}
+    disabled={!patientVoiceType} // Disable if patientVoiceType is empty
+  >
+    Confirm
+  </Button>
+</View>
+
     </View>
   </View>
 </Modal>
@@ -139,31 +154,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f0f4ff',
-    paddingHorizontal: 20,
+    paddingHorizontal: '20%',
   },
   animation: {
-    width: 200,
-    height: 200,
-    marginBottom: 20,
+    width: '100%',
+    height: '30%',
+    marginBottom:'10%',
   },
   title: {
     fontSize: 24,
+    fontFamily: 'Inter-Black',
     fontWeight: 'bold',
     color: '#37474F',
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: '5%',
   },
   subtitle: {
     fontSize: 16,
     color: '#607D8B',
     textAlign: 'center',
-    marginBottom: 30,
+    marginBottom: '10%',
   },
   button: {
     backgroundColor: '#64edd3',
     borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 30,
+    paddingVertical: '3%',
+    paddingHorizontal: '10%',
   },
   buttonLabel: {
     fontSize: 18,
@@ -181,46 +197,50 @@ const styles = StyleSheet.create({
     width: '80%',
     backgroundColor: 'white',
     borderRadius: 10,
-    padding: 20,
+    padding: '5%',
     alignItems: 'center',
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 20,
+    marginBottom: '5%',
   },
-  input: {
+  pickerTitle: {
+    fontSize: 15,
+    fontWeight: 'normal',
+  },
+input: {
     width: '100%',
-    height: 40,
     borderColor: '#ccc',
     borderWidth: 1,
     borderRadius: 8,
-    paddingHorizontal: 10,
-    marginBottom: 10,
+    paddingHorizontal: '5%',
+    marginBottom: '5%',
   },
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 20,
+    marginTop: '5%',
     width: '100%',
   },
   modalButton: {
     flex: 1,
-    marginHorizontal: 5,
+    marginHorizontal: '2%',
   },
   dropdown: {
-    height: 50,
+    height: 70,
     width: '100%',
-    marginVertical: 10,
+    marginVertical: '1%',
     borderWidth: 1,
     borderColor: '#ccc',
     borderRadius: 5,
-    padding: 10,
+    padding: '3%',
   },
   dropdownLabel: {
     fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 5,
+    marginBottom: '3%',
   },
-  
+
 });
+

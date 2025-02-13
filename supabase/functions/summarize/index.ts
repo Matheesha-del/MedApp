@@ -29,7 +29,8 @@ Deno.serve(async (req) => {
       messages: [
         { 
           role: "system", 
-          content: `You are an assistant. I have passe you a conversation between a doctor and a patient. Please give me a summary of that. ` 
+          content: `You are an assistant. I have passe you a conversation between a doctor and a patient. Please give me the consent which given by the doctor such as instructions. Don't add anything extra to the consent of the conversation.
+          Also, don't add any greetings or any other general information to the summary. Please send me the summary as a paragraph.` 
         },
         { role: "user", content: conversation },
       ],
