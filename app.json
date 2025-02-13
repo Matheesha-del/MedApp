@@ -10,6 +10,9 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-router"
+    ],
+    "plugins": [
       "expo-router",
       "expo-font",
        
@@ -19,10 +22,10 @@
       "tsconfigPaths": true
     },
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/Micon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/ss.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -36,6 +39,15 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
+      },
+      "package": "com.anonymous.MedTranslator"
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "3756ae89-1296-4c47-bb73-ba6e9ea48bf8"
       }
     }
   }

@@ -108,34 +108,37 @@ export default function Home() {
       <Text style={styles.pickerTitle}>Select the Voice Type</Text>
       {/* Voice Type Dropdown */}
       <Picker
-        selectedValue={patientVoiceType}
-        onValueChange={(itemValue) => setPatientVoiceType(itemValue)}
-        style={styles.dropdown}
-      >
-        
-        <Picker.Item label="Voice Type" value="" enabled={false} />
-        <Picker.Item label="Voice-1 (Female)" value="ta-IN-Standard-A" />
-        <Picker.Item label="Voice-2 (Male)" value="ta-IN-Standard-B" />
-        {/*<Picker.Item label="voice-3" value="ta-IN-Standard-C" />
-        <Picker.Item label="voice-4" value="ta-IN-Standard-D" />*/}
-      </Picker>
-      {/* Modal Buttons */}
-      <View style={styles.modalButtons}>
-        <Button
-          mode="contained"
-          style={[styles.modalButton, { backgroundColor: '#f44336' }]}
-          onPress={() => setModalVisible(false)}
-        >
-          Cancel
-        </Button>
-        <Button
-          mode="contained"
-          style={[styles.modalButton, { backgroundColor: '#4caf50' }]}
-          onPress={handleConfirm}
-        >
-          Confirm
-        </Button>
-      </View>
+  selectedValue={patientVoiceType}
+  onValueChange={(itemValue) => setPatientVoiceType(itemValue)}
+  style={styles.dropdown}
+>
+  <Picker.Item label="Voice Type" value="" enabled={false} />
+  <Picker.Item label="Voice-1 (Female)" value="ta-IN-Standard-A" />
+  <Picker.Item label="Voice-2 (Male)" value="ta-IN-Standard-B" />
+</Picker>
+
+<View style={styles.modalButtons}>
+  <Button
+    mode="contained"
+    style={[styles.modalButton, { backgroundColor: '#f44336' }]}
+    onPress={() => setModalVisible(false)}
+  >
+    Cancel
+  </Button>
+  {/*Ok Button*/}
+  <Button
+    mode="contained"
+    style={[
+      styles.modalButton,
+      { backgroundColor: patientVoiceType ? '#4caf50' : '#9e9e9e' }, // Grey out if disabled
+    ]}
+    onPress={handleConfirm}
+    disabled={!patientVoiceType} // Disable if patientVoiceType is empty
+  >
+    Confirm
+  </Button>
+</View>
+
     </View>
   </View>
 </Modal>
