@@ -1,13 +1,17 @@
-import { useLocalSearchParams } from 'expo-router';
-import { Platform, Text , View, TextInput, Button, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert}from 'react-native';
+import { Stack, useLocalSearchParams } from 'expo-router';
+import { Platform, Text , View, TextInput, Button, ScrollView, ImageBackground, StyleSheet, TouchableOpacity, Modal, Alert}from 'react-native';
 import {supabase} from '~/utils/supabase';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { useState, useRef, useEffect} from 'react';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
+import { Container } from '~/components/Container';
+import { ScreenContent } from '~/components/ScreenContent';
 import * as Print from 'expo-print';
 import { shareAsync } from 'expo-sharing';
+import { format } from 'date-fns';
 
 
 export default function Details() {
@@ -26,17 +30,27 @@ export default function Details() {
   const searchParams = useLocalSearchParams();
   const [name, setName] = useState(searchParams.name || null);
   const [age, setAge] = useState(searchParams.age || null);
+  const [voiceType, setVoiceType] = useState(searchParams.voiceType || null);
+  const [patientVoiceType, setPatientVoiceType] = useState(searchParams.voiceType || null);
+  const currentDate = new Date();
+  const formattedDate = format(currentDate, 'yyyy-MM-dd');
 
   
   const textToSpeech = async (text: string) =>{
-    const { data,error } = await supabase.functions.invoke('text-to-speech',{
-      body: JSON.stringify({ input:text }),
+    console.log(voiceType);
+    const { data,error } = await supabase.functions.invoke('tts',{
+      body: JSON.stringify({
+        "text": text,
+        "languageCode": "தமிழ் (இந்தியா)",
+        "voiceName": voiceType
+      }),
     });
     console.log(error);
     console.log(data);
     if (data)
     {
-      const uri = `data:audio/mp3;base64,${data.mp3Base64}`;
+      const uri = `data:audio/mp3;base64,${data.audioContent}`;
+      console.log(uri);
 
       // Add the URI to the array
       setUriArray((prevArray) => [...prevArray, uri]);
@@ -48,8 +62,8 @@ export default function Details() {
   };
 
   // Append new messages to conversation and save to file
-  const addMessage = (speaker:string, text :string) => {
-    const newConversation = [...conversation, { speaker, text}];
+  const addMessage = (speaker:string, text :string, text2:string) => {
+    const newConversation = [...conversation, { speaker, text, text2}];
     setConversation(newConversation);
 
 
@@ -116,10 +130,14 @@ export default function Details() {
   
     let report = 'Conversation Report\n';
     report += '=====================\n\n';
+    report += `Date : ${formattedDate} \n`;
+    report += `Name : ${name} \n`;
+    report += `Age : ${age} \n\n`;
   
     conversation.forEach((line, index) => {
       //report += `Message ${index + 1}:\n`;
       report += `${line.speaker} : ${line.text}\n`;
+      report += `                 ( ${line.text2} )\n`;
     });
   
     report += '=====================\n';
@@ -139,7 +157,11 @@ export default function Details() {
       console.error('Failed to generate report:', err);
     }
   };
- 
+  
+  
+
+
+
   const clearConversation = async () => {
     try {
       const path = FileSystem.documentDirectory + 'conversation.txt';
@@ -277,11 +299,11 @@ const handleReplay = (index) => {
         playsInSilentModeIOS: true,
       });
 
-      console.log('Starting recording..');
+      //console.log('Starting recording..');
       const { recording } = await Audio.Recording.createAsync( Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
       setDoctorRecording(recording);
-      console.log('Recording started');
+      //console.log('Recording started');
     } catch (err) {
       console.error('Failed to start recording', err);
     }
@@ -291,7 +313,7 @@ const handleReplay = (index) => {
     if (!doctorRecording){
       return;
     }
-    console.log('Stopping recording..');
+    //console.log('Stopping recording..');
     setDoctorRecording(undefined);
     await doctorRecording.stopAndUnloadAsync();
     await Audio.setAudioModeAsync(
@@ -300,7 +322,7 @@ const handleReplay = (index) => {
       }
     );
     const uri = doctorRecording.getURI();
-    console.log('Recording stopped and stored at', uri);
+    //console.log('Recording stopped and stored at', uri);
 
     if(uri){
       const audioBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64'});
@@ -308,12 +330,14 @@ const handleReplay = (index) => {
         body: JSON.stringify({ audioBase64 }),
       });
       //setInput(data.text);
-      if (data?.text) {
-        addMessage('Doctor', data.text);
-      }
+      
 
       const translation = await translateET(data.text);
       textToSpeech(translation);
+
+      if (data?.text) {
+        addMessage('Doctor', data.text ,translation);
+      }
 
       console.log(data);
       console.log(error);
@@ -365,7 +389,8 @@ const handleReplay = (index) => {
         if (data?.text) {
           
           const translation = await translateTE(data.text);
-          addMessage('Patient', translation);
+          addMessage('Patient', translation, data.text);
+          setUriArray((prevArray) => [...prevArray, uri]);
           
         }
         console.log(data);
@@ -381,7 +406,6 @@ const handleReplay = (index) => {
       <Text style={styles.details}>Name - {name}</Text>
       <Text style={styles.details}>Age - {age}</Text>
       </View>
-      
         {conversation.map((line, index) => (
           <View key={index} 
           style={[styles.messageContainer,
@@ -395,6 +419,7 @@ const handleReplay = (index) => {
           <Text style={styles.outputText}>
           <View style={styles.textContainer}>
             <Text style={styles.outputText}>{line.text}</Text>
+            <Text style={styles.outputText}>{line.text2}</Text>
             {line.speaker === 'Doctor' && handleReplay(index)}
             </View>
            
@@ -442,7 +467,7 @@ const handleReplay = (index) => {
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
           <ScrollView contentContainerStyle={styles.scrollContent}>
-            <Text style={styles.summaryHeader}>Summary of the Conversation</Text>
+            <Text style={styles.summaryHeader}>Report</Text>
             <Text style={styles.summaryText}>{summaryText}</Text>
             <View style={styles.signatureContainer}>
               <Text>Doctor's Signature: ______________</Text>
@@ -477,27 +502,31 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'darkcyan',
-    padding: 20,
+    padding: '7%',
   },
   header: {
     fontSize: 24,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: '5%',
     color: '#fff',
+    textShadowColor: 'black', // Shadow color (acts as border)
+    textShadowOffset: { width: 1, height: 1 }, // Border thickness
+    textShadowRadius: 2, // Smoothens the edges
   },
   messageContainer: {
     flexDirection: 'row',
+    padding: '1%',
     alignItems: 'center',
-    marginBottom: 20,
-    marginLeft: 10, // Padding for doctor messages
-    marginRight: 10, // Padding for both messages
+    marginBottom: '2%',
+    marginLeft: '2%', // Padding for doctor messages
+    marginRight:'2%', // Padding for both messages
   },
   textContainer: {
     backgroundColor: '#f1f1f1', // Light gray background for text
     borderRadius: 8,  // Rounded corners for the background
-    paddingHorizontal: 8,  // Horizontal padding to create space around text
-    paddingVertical: 8,  // Vertical padding for better spacing
+    paddingHorizontal: '4%',  // Horizontal padding to create space around text
+    paddingVertical: '4%',  // Vertical padding for better spacing
     
   },
   patientMessage: {
@@ -505,15 +534,15 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   icon: {
-    marginRight: 10,
-    marginLeft: 5,
+    marginRight:'3%',
+    marginLeft: '3%',
   },
   outputArea: {
     flex: 1,
     backgroundColor: '#fff',
     borderRadius: 10,
-    padding: 20,
-    marginBottom: 20,
+    padding: '10%',
+    marginBottom: '2%',
   },
   outputText: {
     fontSize: 16,
@@ -525,7 +554,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: '6%',
   },
   details: {
     fontSize: 18,
@@ -536,8 +565,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: 10,
-    backgroundColor: '#fff',
+    paddingVertical: '3%',
+    backgroundColor: 'lightcyan',
+    borderRadius:10,
   },
   button2:{
     alignItems: 'center',
@@ -567,7 +597,7 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: 'white',
-    padding: 20,
+    padding: '5%',
     borderRadius: 10,
     width: '80%',
   },
@@ -578,26 +608,26 @@ const styles = StyleSheet.create({
   summaryHeader: {
     fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 10,
+    marginBottom: '5%',
     textAlign: 'center',
   },
   summaryText: {
     fontSize: 16,
-    marginBottom: 20,
+    marginBottom: '6%',
   },
   signatureContainer: {
-    marginBottom: 20,
+    marginBottom: '6%',
   },
   spacer: {
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeButton: {
-    marginTop: 20,
+    marginTop: '6%',
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'crimson',
-    padding: 10,
+    padding: '3%',
     borderRadius: 5,
   },
   closeButtonText: {
@@ -610,7 +640,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between', // Adjust spacing between buttons
     alignItems: 'center', // Align vertically
-    paddingHorizontal: 10, // Optional: add some horizontal padding
+    paddingHorizontal: '3%', // Optional: add some horizontal padding
   },
   printer: {
     textAlign: 'center',
